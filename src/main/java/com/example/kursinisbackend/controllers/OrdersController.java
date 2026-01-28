@@ -32,7 +32,7 @@ public class OrdersController {
 
     @GetMapping(value = "getOrderByUser/{id}")
     public @ResponseBody Iterable<FoodOrder> getOrdersForUser(@PathVariable int id) {
-        return ordersRepo.getFoodOrdersByBuyer_Id(id);
+        return ordersRepo.findByBuyer_Id(id);
     }
 
     @GetMapping(value = "getMessagesForOrder/{id}")

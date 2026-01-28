@@ -6,9 +6,9 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import netscape.javascript.JSObject;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.List;
 
 @Getter
@@ -24,17 +24,27 @@ public class Chat {
     private String name;
     private String chatText;
     private LocalDate dateCreated;
+
     @JsonIgnore
     @OneToOne(mappedBy = "chat", cascade = CascadeType.ALL)
     private FoodOrder foodOrder;
+
     @JsonIgnore
-    @OneToMany(mappedBy = "chat", cascade = CascadeType.ALL)
+    @OneToMany(mappedBy = "chat", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<Review> messages;
+
+    public Chat(String name, FoodOrder foodOrder) {
+        this.name = name;
+        this.foodOrder = foodOrder;
+        this.dateCreated = LocalDate.now();
+        this.messages = new ArrayList<>();
+    }
 
     public Chat(String name, String chatText, FoodOrder foodOrder) {
         this.name = name;
         this.chatText = chatText;
         this.dateCreated = LocalDate.now();
         this.foodOrder = foodOrder;
+        this.messages = new ArrayList<>();
     }
 }

@@ -7,6 +7,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @Getter
@@ -18,19 +19,52 @@ public class FoodOrder {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private int id;
+
     private String name;
     private Double price;
-    @JsonIgnore
+
     @ManyToOne
     private BasicUser buyer;
-    @JsonIgnore
-    @ManyToMany
+
+    @ManyToOne
+    private Driver driver; // Driver assignment
+
+    @ManyToMany(fetch = FetchType.EAGER)
     private List<Cuisine> cuisineList;
-    @JsonIgnore
-    @OneToOne
+
+    @OneToOne(cascade = CascadeType.ALL)
     private Chat chat;
-    @JsonIgnore
+
     @ManyToOne
     private Restaurant restaurant;
 
+    @Enumerated(EnumType.STRING)
+    private OrderStatus orderStatus;
+
+    private LocalDate dateCreated;
+    private LocalDate dateUpdated;
+
+    public FoodOrder(String name, Double price, BasicUser buyer, Restaurant restaurant) {
+        this.name = name;
+        this.price = price;
+        this.buyer = buyer;
+        this.restaurant = restaurant;
+        this.orderStatus = OrderStatus.PLACED;
+        this.dateCreated = LocalDate.now();
+    }
+
+    public FoodOrder(String name, Double price, BasicUser buyer, List<Cuisine> cuisineList, Restaurant restaurant) {
+        this.name = name;
+        this.price = price;
+        this.buyer = buyer;
+        this.cuisineList = cuisineList;
+        this.restaurant = restaurant;
+        this.orderStatus = OrderStatus.PLACED;
+        this.dateCreated = LocalDate.now();
+    }
+
+    @Override
+    public String toString() {
+        return String.format("#%d - %s (€%.2f) - %s", id, name, price, orderStatus);
+    }
 }
