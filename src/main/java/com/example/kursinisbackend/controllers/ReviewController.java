@@ -1,7 +1,13 @@
 package com.example.kursinisbackend.controllers;
 
-import com.example.kursinisbackend.model.*;
-import com.example.kursinisbackend.repos.*;
+import com.example.kursinisbackend.model.BasicUser;
+import com.example.kursinisbackend.model.Chat;
+import com.example.kursinisbackend.model.Review;
+import com.example.kursinisbackend.repos.BasicUserRepository;
+import com.example.kursinisbackend.repos.ChatRepo;
+import com.example.kursinisbackend.repos.ReviewRepo;
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -22,13 +28,11 @@ public class ReviewController {
     private BasicUserRepository basicUserRepository;
 
     @Autowired
-    private RestaurantRepository restaurantRepository;
-
-    @Autowired
-    private OrdersRepo ordersRepo;
+    private ChatRepo chatRepo;
 
     /**
-     * Get all reviews (admin only)
+     * Get all reviews
+     * GET /api/reviews
      */
     @GetMapping
     public ResponseEntity<List<Review>> getAllReviews() {
@@ -38,239 +42,90 @@ public class ReviewController {
 
     /**
      * Get review by ID
+     * GET /api/reviews/{reviewId}
      */
     @GetMapping("/{reviewId}")
-    public ResponseEntity<Review> getReviewById(@PathVariable int reviewId) {
-        return reviewRepo.findById(reviewId)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<?> getReviewById(@PathVariable int reviewId) {
+        try {
+            Review review = reviewRepo.findById(reviewId)
+                    .orElseThrow(() -> new Exception("Review not found"));
+            return ResponseEntity.ok(review);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        }
     }
 
     /**
-     * Create a new review
+     * Create a new review/rating
+     * POST /api/reviews
      */
     @PostMapping
-    public ResponseEntity<?> createReview(@RequestBody CreateReviewRequest request) {
+    public ResponseEntity<?> createReview(@RequestBody String reviewJson) {
         try {
-            // Validate input
-            if (request.getReviewText() == null || request.getReviewText().trim().isEmpty()) {
-                return ResponseEntity.badRequest().body("Review text is required");
-            }
-            if (request.getRating() < 1 || request.getRating() > 5) {
-                return ResponseEntity.badRequest().body("Rating must be between 1 and 5");
-            }
-            if (request.getCommentOwnerId() <= 0) {
-                return ResponseEntity.badRequest().body("Valid comment owner ID is required");
-            }
-            if (request.getFeedbackUserId() <= 0) {
-                return ResponseEntity.badRequest().body("Valid feedback user ID is required");
-            }
+            Gson gson = new Gson();
+            JsonObject json = gson.fromJson(reviewJson, JsonObject.class);
 
-            // Get comment owner (reviewer)
-            BasicUser commentOwner = basicUserRepository.findById(request.getCommentOwnerId())
-                    .orElseThrow(() -> new Exception("Comment owner not found"));
+            String reviewText = json.get("reviewText").getAsString();
+            int userId = json.get("userId").getAsInt();
+            int chatId = json.get("chatId").getAsInt();
 
-            // Get feedback user (person being reviewed)
-            BasicUser feedbackUser = basicUserRepository.findById(request.getFeedbackUserId())
-                    .orElseThrow(() -> new Exception("Feedback user not found"));
+            BasicUser commentOwner = basicUserRepository.findById(userId)
+                    .orElseThrow(() -> new Exception("User not found"));
 
-            // Validate review permissions
-            // Customers and drivers can review restaurants
-            // Restaurants and drivers can review customers
-            // Only drivers can be reviewed by customers and restaurants
-            boolean validReview = validateReviewPermissions(commentOwner, feedbackUser);
-            if (!validReview) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                        .body("You are not authorized to review this user");
-            }
+            Chat chat = chatRepo.findById(chatId)
+                    .orElseThrow(() -> new Exception("Chat not found"));
 
-            // Create review
-            Review review = new Review();
-            review.setReviewText(request.getReviewText());
-            review.setRating(request.getRating());
-            review.setCommentOwner(commentOwner);
-            review.setFeedbackUser(feedbackUser);
+            Review review = new Review(reviewText, commentOwner, chat);
             review.setDateCreated(LocalDate.now());
 
-            reviewRepo.save(review);
+            // If rating is provided
+            if (json.has("rating")) {
+                int rating = json.get("rating").getAsInt();
+                if (rating < 1 || rating > 5) {
+                    return ResponseEntity.badRequest().body("Rating must be between 1 and 5");
+                }
+                // Store rating in reviewText or add a rating field to Review model
+                review.setReviewText(reviewText + " [Rating: " + rating + "/5]");
+            }
 
+            reviewRepo.save(review);
             return ResponseEntity.status(HttpStatus.CREATED).body(review);
 
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Error creating review: " + e.getMessage());
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
         }
     }
 
     /**
-     * Validate if user can review another user
-     */
-    private boolean validateReviewPermissions(BasicUser reviewer, BasicUser reviewee) {
-        // Customers can review restaurants and drivers
-        if (!(reviewer instanceof Restaurant) && !(reviewer instanceof Driver)) {
-            return (reviewee instanceof Restaurant) || (reviewee instanceof Driver);
-        }
-
-        // Restaurants can review customers and drivers
-        if (reviewer instanceof Restaurant) {
-            return !(reviewee instanceof Restaurant);
-        }
-
-        // Drivers can review customers and restaurants
-        if (reviewer instanceof Driver) {
-            return true;
-        }
-
-        return false;
-    }
-
-    /**
-     * Get reviews for a specific user (reviews about them)
-     */
-    @GetMapping("/users/{userId}")
-    public ResponseEntity<?> getReviewsForUser(@PathVariable int userId) {
-        try {
-            BasicUser user = basicUserRepository.findById(userId)
-                    .orElseThrow(() -> new Exception("User not found"));
-
-            List<Review> reviews = reviewRepo.findAll().stream()
-                    .filter(r -> r.getFeedbackUser() != null && r.getFeedbackUser().getId() == userId)
-                    .collect(Collectors.toList());
-
-            return ResponseEntity.ok(reviews);
-
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Error getting reviews: " + e.getMessage());
-        }
-    }
-
-    /**
-     * Get reviews written by a user
-     */
-    @GetMapping("/users/{userId}/written")
-    public ResponseEntity<?> getReviewsWrittenByUser(@PathVariable int userId) {
-        try {
-            BasicUser user = basicUserRepository.findById(userId)
-                    .orElseThrow(() -> new Exception("User not found"));
-
-            List<Review> reviews = reviewRepo.findAll().stream()
-                    .filter(r -> r.getCommentOwner() != null && r.getCommentOwner().getId() == userId)
-                    .collect(Collectors.toList());
-
-            return ResponseEntity.ok(reviews);
-
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Error getting reviews: " + e.getMessage());
-        }
-    }
-
-    /**
-     * Get reviews for a restaurant
-     */
-    @GetMapping("/restaurants/{restaurantId}")
-    public ResponseEntity<?> getRestaurantReviews(@PathVariable int restaurantId) {
-        try {
-            Restaurant restaurant = restaurantRepository.findById(restaurantId)
-                    .orElseThrow(() -> new Exception("Restaurant not found"));
-
-            List<Review> reviews = reviewRepo.findAll().stream()
-                    .filter(r -> r.getFeedbackUser() != null && r.getFeedbackUser().getId() == restaurantId)
-                    .collect(Collectors.toList());
-
-            return ResponseEntity.ok(reviews);
-
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Error getting reviews: " + e.getMessage());
-        }
-    }
-
-    /**
-     * Get reviews for a driver
-     */
-    @GetMapping("/drivers/{driverId}")
-    public ResponseEntity<?> getDriverReviews(@PathVariable int driverId) {
-        try {
-            // Verify user is a driver
-            BasicUser user = basicUserRepository.findById(driverId)
-                    .orElseThrow(() -> new Exception("User not found"));
-
-            if (!(user instanceof Driver)) {
-                return ResponseEntity.badRequest().body("User is not a driver");
-            }
-
-            List<Review> reviews = reviewRepo.findAll().stream()
-                    .filter(r -> r.getFeedbackUser() != null && r.getFeedbackUser().getId() == driverId)
-                    .collect(Collectors.toList());
-
-            return ResponseEntity.ok(reviews);
-
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Error getting reviews: " + e.getMessage());
-        }
-    }
-
-    /**
-     * Get average rating for a user
-     */
-    @GetMapping("/users/{userId}/rating")
-    public ResponseEntity<?> getUserAverageRating(@PathVariable int userId) {
-        try {
-            BasicUser user = basicUserRepository.findById(userId)
-                    .orElseThrow(() -> new Exception("User not found"));
-
-            List<Review> reviews = reviewRepo.findAll().stream()
-                    .filter(r -> r.getFeedbackUser() != null && r.getFeedbackUser().getId() == userId)
-                    .filter(r -> r.getRating() > 0)
-                    .collect(Collectors.toList());
-
-            if (reviews.isEmpty()) {
-                return ResponseEntity.ok(new RatingResponse(0.0, 0));
-            }
-
-            double averageRating = reviews.stream()
-                    .mapToInt(Review::getRating)
-                    .average()
-                    .orElse(0.0);
-
-            return ResponseEntity.ok(new RatingResponse(averageRating, reviews.size()));
-
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Error calculating rating: " + e.getMessage());
-        }
-    }
-
-    /**
-     * Update review
+     * Update a review
+     * PUT /api/reviews/{reviewId}
      */
     @PutMapping("/{reviewId}")
     public ResponseEntity<?> updateReview(
             @PathVariable int reviewId,
-            @RequestBody UpdateReviewRequest request) {
+            @RequestBody String reviewJson) {
         try {
             Review review = reviewRepo.findById(reviewId)
                     .orElseThrow(() -> new Exception("Review not found"));
 
-            // Update fields if provided
-            if (request.getReviewText() != null && !request.getReviewText().trim().isEmpty()) {
-                review.setReviewText(request.getReviewText());
-            }
+            Gson gson = new Gson();
+            JsonObject json = gson.fromJson(reviewJson, JsonObject.class);
 
-            if (request.getRating() != null) {
-                if (request.getRating() < 1 || request.getRating() > 5) {
-                    return ResponseEntity.badRequest().body("Rating must be between 1 and 5");
-                }
-                review.setRating(request.getRating());
+            if (json.has("reviewText")) {
+                review.setReviewText(json.get("reviewText").getAsString());
             }
 
             reviewRepo.save(review);
             return ResponseEntity.ok(review);
 
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Error updating review: " + e.getMessage());
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
         }
     }
 
     /**
-     * Delete review
+     * Delete a review
+     * DELETE /api/reviews/{reviewId}
      */
     @DeleteMapping("/{reviewId}")
     public ResponseEntity<?> deleteReview(@PathVariable int reviewId) {
@@ -278,104 +133,230 @@ public class ReviewController {
             Review review = reviewRepo.findById(reviewId)
                     .orElseThrow(() -> new Exception("Review not found"));
 
-            // Check if review is a chat message
-            if (review.getChat() != null) {
-                return ResponseEntity.badRequest()
-                        .body("Cannot delete chat messages through this endpoint. Use chat API instead.");
-            }
-
             reviewRepo.delete(review);
             return ResponseEntity.ok("Review deleted successfully");
 
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Error deleting review: " + e.getMessage());
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
         }
     }
 
-    // Request/Response DTOs
-    public static class CreateReviewRequest {
-        private String reviewText;
-        private int rating;
-        private int commentOwnerId;
-        private int feedbackUserId;
+    /**
+     * Get reviews by user (reviews about a user)
+     * GET /api/reviews/users/{userId}
+     */
+    @GetMapping("/users/{userId}")
+    public ResponseEntity<?> getReviewsByUser(@PathVariable int userId) {
+        try {
+            BasicUser user = basicUserRepository.findById(userId)
+                    .orElseThrow(() -> new Exception("User not found"));
 
-        public String getReviewText() {
-            return reviewText;
-        }
+            List<Review> allReviews = reviewRepo.findAll();
+            List<Review> userReviews = allReviews.stream()
+                    .filter(review -> review.getCommentOwner().getId() == userId)
+                    .collect(Collectors.toList());
 
-        public void setReviewText(String reviewText) {
-            this.reviewText = reviewText;
-        }
+            return ResponseEntity.ok(userReviews);
 
-        public int getRating() {
-            return rating;
-        }
-
-        public void setRating(int rating) {
-            this.rating = rating;
-        }
-
-        public int getCommentOwnerId() {
-            return commentOwnerId;
-        }
-
-        public void setCommentOwnerId(int commentOwnerId) {
-            this.commentOwnerId = commentOwnerId;
-        }
-
-        public int getFeedbackUserId() {
-            return feedbackUserId;
-        }
-
-        public void setFeedbackUserId(int feedbackUserId) {
-            this.feedbackUserId = feedbackUserId;
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
         }
     }
 
-    public static class UpdateReviewRequest {
-        private String reviewText;
-        private Integer rating;
+    /**
+     * Get reviews written by a user
+     * GET /api/reviews/users/{userId}/written
+     */
+    @GetMapping("/users/{userId}/written")
+    public ResponseEntity<?> getReviewsWrittenByUser(@PathVariable int userId) {
+        try {
+            BasicUser user = basicUserRepository.findById(userId)
+                    .orElseThrow(() -> new Exception("User not found"));
 
-        public String getReviewText() {
-            return reviewText;
-        }
+            List<Review> writtenReviews = reviewRepo.findByCommentOwner_Id(userId);
+            return ResponseEntity.ok(writtenReviews);
 
-        public void setReviewText(String reviewText) {
-            this.reviewText = reviewText;
-        }
-
-        public Integer getRating() {
-            return rating;
-        }
-
-        public void setRating(Integer rating) {
-            this.rating = rating;
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
         }
     }
 
-    public static class RatingResponse {
-        private double averageRating;
-        private int totalReviews;
+    /**
+     * Get reviews for a restaurant
+     * GET /api/reviews/restaurants/{restaurantId}
+     */
+    @GetMapping("/restaurants/{restaurantId}")
+    public ResponseEntity<?> getRestaurantReviews(@PathVariable int restaurantId) {
+        try {
+            // Get all chats related to orders from this restaurant
+            List<Chat> allChats = chatRepo.findAll();
+            List<Chat> restaurantChats = allChats.stream()
+                    .filter(chat -> chat.getFoodOrder() != null &&
+                            chat.getFoodOrder().getRestaurant() != null &&
+                            chat.getFoodOrder().getRestaurant().getId() == restaurantId)
+                    .collect(Collectors.toList());
 
-        public RatingResponse(double averageRating, int totalReviews) {
-            this.averageRating = averageRating;
-            this.totalReviews = totalReviews;
+            // Get all reviews from these chats
+            List<Review> restaurantReviews = restaurantChats.stream()
+                    .flatMap(chat -> chat.getMessages().stream())
+                    .filter(review -> review.getReviewText().contains("Rating:"))
+                    .collect(Collectors.toList());
+
+            return ResponseEntity.ok(restaurantReviews);
+
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
         }
+    }
 
-        public double getAverageRating() {
-            return averageRating;
+    /**
+     * Get reviews for a driver
+     * GET /api/reviews/drivers/{driverId}
+     */
+    @GetMapping("/drivers/{driverId}")
+    public ResponseEntity<?> getDriverReviews(@PathVariable int driverId) {
+        try {
+            // Get all chats related to orders delivered by this driver
+            List<Chat> allChats = chatRepo.findAll();
+            List<Chat> driverChats = allChats.stream()
+                    .filter(chat -> chat.getFoodOrder() != null &&
+                            chat.getFoodOrder().getDriver() != null &&
+                            chat.getFoodOrder().getDriver().getId() == driverId)
+                    .collect(Collectors.toList());
+
+            // Get all reviews from these chats
+            List<Review> driverReviews = driverChats.stream()
+                    .flatMap(chat -> chat.getMessages().stream())
+                    .filter(review -> review.getReviewText().contains("Rating:"))
+                    .collect(Collectors.toList());
+
+            return ResponseEntity.ok(driverReviews);
+
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
         }
+    }
 
-        public void setAverageRating(double averageRating) {
-            this.averageRating = averageRating;
+    /**
+     * Get average rating for a user (restaurant or driver)
+     * GET /api/reviews/users/{userId}/rating
+     */
+    @GetMapping("/users/{userId}/rating")
+    public ResponseEntity<?> getAverageRating(@PathVariable int userId) {
+        try {
+            BasicUser user = basicUserRepository.findById(userId)
+                    .orElseThrow(() -> new Exception("User not found"));
+
+            List<Review> allReviews = reviewRepo.findAll();
+
+            // Filter reviews that mention this user and have ratings
+            List<Review> userRatings = allReviews.stream()
+                    .filter(review -> {
+                        if (review.getChat() == null || review.getChat().getFoodOrder() == null) {
+                            return false;
+                        }
+
+                        int restaurantId = review.getChat().getFoodOrder().getRestaurant() != null ?
+                                review.getChat().getFoodOrder().getRestaurant().getId() : -1;
+                        int driverId = review.getChat().getFoodOrder().getDriver() != null ?
+                                review.getChat().getFoodOrder().getDriver().getId() : -1;
+
+                        return (restaurantId == userId || driverId == userId) &&
+                                review.getReviewText().contains("Rating:");
+                    })
+                    .collect(Collectors.toList());
+
+            if (userRatings.isEmpty()) {
+                JsonObject response = new JsonObject();
+                response.addProperty("userId", userId);
+                response.addProperty("averageRating", 0.0);
+                response.addProperty("totalRatings", 0);
+                return ResponseEntity.ok(response.toString());
+            }
+
+            // Extract ratings from review text (format: "... [Rating: X/5]")
+            double totalRating = 0.0;
+            int count = 0;
+
+            for (Review review : userRatings) {
+                String text = review.getReviewText();
+                int ratingStart = text.indexOf("[Rating: ") + 9;
+                int ratingEnd = text.indexOf("/5]");
+
+                if (ratingStart > 8 && ratingEnd > ratingStart) {
+                    try {
+                        int rating = Integer.parseInt(text.substring(ratingStart, ratingEnd));
+                        totalRating += rating;
+                        count++;
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
+            }
+
+            double averageRating = count > 0 ? totalRating / count : 0.0;
+
+            JsonObject response = new JsonObject();
+            response.addProperty("userId", userId);
+            response.addProperty("userName", user.getName() + " " + user.getSurname());
+            response.addProperty("averageRating", Math.round(averageRating * 10.0) / 10.0);
+            response.addProperty("totalRatings", count);
+
+            return ResponseEntity.ok(response.toString());
+
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
         }
+    }
 
-        public int getTotalReviews() {
-            return totalReviews;
+    /**
+     * Get recent reviews (last N reviews)
+     * GET /api/reviews/recent?limit={limit}
+     */
+    @GetMapping("/recent")
+    public ResponseEntity<?> getRecentReviews(
+            @RequestParam(defaultValue = "10") int limit) {
+        try {
+            List<Review> allReviews = reviewRepo.findAll();
+
+            // Sort by date (most recent first) and limit
+            List<Review> recentReviews = allReviews.stream()
+                    .sorted((r1, r2) -> {
+                        LocalDate d1 = r1.getDateCreated() != null ? r1.getDateCreated() : LocalDate.MIN;
+                        LocalDate d2 = r2.getDateCreated() != null ? r2.getDateCreated() : LocalDate.MIN;
+                        return d2.compareTo(d1);
+                    })
+                    .limit(limit)
+                    .collect(Collectors.toList());
+
+            return ResponseEntity.ok(recentReviews);
+
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
         }
+    }
 
-        public void setTotalReviews(int totalReviews) {
-            this.totalReviews = totalReviews;
+    /**
+     * Get reviews by rating
+     * GET /api/reviews/rating/{rating}
+     */
+    @GetMapping("/rating/{rating}")
+    public ResponseEntity<?> getReviewsByRating(@PathVariable int rating) {
+        try {
+            if (rating < 1 || rating > 5) {
+                return ResponseEntity.badRequest().body("Rating must be between 1 and 5");
+            }
+
+            List<Review> allReviews = reviewRepo.findAll();
+            String ratingPattern = "[Rating: " + rating + "/5]";
+
+            List<Review> filteredReviews = allReviews.stream()
+                    .filter(review -> review.getReviewText().contains(ratingPattern))
+                    .collect(Collectors.toList());
+
+            return ResponseEntity.ok(filteredReviews);
+
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
         }
     }
 }

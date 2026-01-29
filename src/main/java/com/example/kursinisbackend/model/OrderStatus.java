@@ -11,5 +11,7 @@ public enum OrderStatus {
     DRIVER_ASSIGNED,  // Driver has been assigned
     OUT_FOR_DELIVERY, // Order is being delivered
     DELIVERED,        // Order has been delivered
-    COMPLETED         // Order is completed (locked state)
+    COMPLETED,        // Order is completed (locked state)
+    CANCELLED,        // Order cancelled by user or restaurant
+    REJECTED          // Order rejected by restaurant
 }

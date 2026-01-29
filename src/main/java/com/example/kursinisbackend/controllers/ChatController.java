@@ -1,8 +1,15 @@
 package com.example.kursinisbackend.controllers;
 
-import com.example.kursinisbackend.model.*;
-import com.example.kursinisbackend.repos.*;
-import com.example.kursinisbackend.service.OrderService;
+import com.example.kursinisbackend.model.BasicUser;
+import com.example.kursinisbackend.model.Chat;
+import com.example.kursinisbackend.model.FoodOrder;
+import com.example.kursinisbackend.model.Review;
+import com.example.kursinisbackend.repos.BasicUserRepository;
+import com.example.kursinisbackend.repos.ChatRepo;
+import com.example.kursinisbackend.repos.OrdersRepo;
+import com.example.kursinisbackend.repos.ReviewRepo;
+import com.google.gson.Gson;
+import com.google.gson.JsonObject;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -22,16 +29,14 @@ public class ChatController {
     private ReviewRepo reviewRepo;
 
     @Autowired
-    private BasicUserRepository basicUserRepository;
-
-    @Autowired
     private OrdersRepo ordersRepo;
 
     @Autowired
-    private OrderService orderService;
+    private BasicUserRepository basicUserRepository;
 
     /**
-     * Get all chats (admin only)
+     * Get all chats
+     * GET /api/chats
      */
     @GetMapping
     public ResponseEntity<List<Chat>> getAllChats() {
@@ -41,28 +46,35 @@ public class ChatController {
 
     /**
      * Get chat by ID
+     * GET /api/chats/{chatId}
      */
     @GetMapping("/{chatId}")
-    public ResponseEntity<Chat> getChatById(@PathVariable int chatId) {
-        return chatRepo.findById(chatId)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+    public ResponseEntity<?> getChatById(@PathVariable int chatId) {
+        try {
+            Chat chat = chatRepo.findById(chatId)
+                    .orElseThrow(() -> new Exception("Chat not found"));
+            return ResponseEntity.ok(chat);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        }
     }
 
     /**
-     * Get chat for specific order
+     * Get chat by order ID
+     * GET /api/chats/orders/{orderId}
      */
     @GetMapping("/orders/{orderId}")
-    public ResponseEntity<?> getChatByOrder(@PathVariable int orderId) {
+    public ResponseEntity<?> getChatByOrderId(@PathVariable int orderId) {
         try {
             Chat chat = chatRepo.getChatByFoodOrder_Id(orderId);
 
             if (chat == null) {
-                // Create chat if doesn't exist
+                // Create chat if it doesn't exist
                 FoodOrder order = ordersRepo.findById(orderId)
                         .orElseThrow(() -> new Exception("Order not found"));
 
-                chat = new Chat("Order Chat #" + orderId, order);
+                String chatName = "Order #" + orderId + " Chat";
+                chat = new Chat(chatName, order);
                 chatRepo.save(chat);
 
                 order.setChat(chat);
@@ -70,14 +82,14 @@ public class ChatController {
             }
 
             return ResponseEntity.ok(chat);
-
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Error getting chat: " + e.getMessage());
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
         }
     }
 
     /**
-     * Get all messages in a chat
+     * Get messages for a chat
+     * GET /api/chats/{chatId}/messages
      */
     @GetMapping("/{chatId}/messages")
     public ResponseEntity<?> getChatMessages(@PathVariable int chatId) {
@@ -86,84 +98,47 @@ public class ChatController {
                     .orElseThrow(() -> new Exception("Chat not found"));
 
             List<Review> messages = chat.getMessages();
-            return ResponseEntity.ok(messages != null ? messages : List.of());
-
+            return ResponseEntity.ok(messages);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Error getting messages: " + e.getMessage());
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
         }
     }
 
     /**
-     * Send message in chat
+     * Send a message to a chat
+     * POST /api/chats/{chatId}/messages
      */
     @PostMapping("/{chatId}/messages")
     public ResponseEntity<?> sendMessage(
             @PathVariable int chatId,
-            @RequestBody SendMessageRequest request) {
+            @RequestBody String messageJson) {
         try {
-            // Validate input
-            if (request.getMessageText() == null || request.getMessageText().trim().isEmpty()) {
-                return ResponseEntity.badRequest().body("Message text is required");
-            }
-            if (request.getUserId() <= 0) {
-                return ResponseEntity.badRequest().body("Valid user ID is required");
-            }
-
-            // Get chat
             Chat chat = chatRepo.findById(chatId)
                     .orElseThrow(() -> new Exception("Chat not found"));
 
-            // Check if chat is locked
-            if (chat.getFoodOrder() != null) {
-                boolean isLocked = orderService.isChatLocked(chat.getFoodOrder().getId());
-                if (isLocked) {
-                    return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                            .body("Cannot send messages - order is completed");
-                }
-            }
+            Gson gson = new Gson();
+            JsonObject json = gson.fromJson(messageJson, JsonObject.class);
 
-            // Get user
-            BasicUser user = basicUserRepository.findById(request.getUserId())
+            String messageText = json.get("messageText").getAsString();
+            int userId = json.get("userId").getAsInt();
+
+            BasicUser sender = basicUserRepository.findById(userId)
                     .orElseThrow(() -> new Exception("User not found"));
 
-            // Verify user can participate in this chat
-            if (chat.getFoodOrder() != null) {
-                FoodOrder order = chat.getFoodOrder();
-                boolean canParticipate = false;
-
-                // Check if user is customer
-                if (order.getBuyer() != null && order.getBuyer().getId() == user.getId()) {
-                    canParticipate = true;
-                }
-                // Check if user is driver
-                else if (order.getDriver() != null && order.getDriver().getId() == user.getId()) {
-                    canParticipate = true;
-                }
-                // Check if user is restaurant
-                else if (order.getRestaurant() != null && order.getRestaurant().getId() == user.getId()) {
-                    canParticipate = true;
-                }
-
-                if (!canParticipate) {
-                    return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                            .body("You are not authorized to participate in this chat");
-                }
-            }
-
-            // Create and save message
-            Review message = new Review(request.getMessageText(), user, chat);
+            Review message = new Review(messageText, sender, chat);
             message.setDateCreated(LocalDate.now());
             reviewRepo.save(message);
 
             return ResponseEntity.status(HttpStatus.CREATED).body(message);
 
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Error sending message: " + e.getMessage());
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
         }
     }
 
     /**
-     * Delete message (admin only)
+     * Delete a message
+     * DELETE /api/chats/{chatId}/messages/{messageId}
      */
     @DeleteMapping("/{chatId}/messages/{messageId}")
     public ResponseEntity<?> deleteMessage(
@@ -174,20 +149,60 @@ public class ChatController {
                     .orElseThrow(() -> new Exception("Message not found"));
 
             // Verify message belongs to this chat
-            if (message.getChat() == null || message.getChat().getId() != chatId) {
-                return ResponseEntity.badRequest().body("Message does not belong to this chat");
+            if (message.getChat().getId() != chatId) {
+                return ResponseEntity.badRequest()
+                        .body("Message does not belong to this chat");
             }
 
             reviewRepo.delete(message);
             return ResponseEntity.ok("Message deleted successfully");
 
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Error deleting message: " + e.getMessage());
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
         }
     }
 
     /**
-     * Delete entire chat (admin only)
+     * Create a new chat (for orders without chats)
+     * POST /api/chats
+     */
+    @PostMapping
+    public ResponseEntity<?> createChat(@RequestBody String chatJson) {
+        try {
+            Gson gson = new Gson();
+            JsonObject json = gson.fromJson(chatJson, JsonObject.class);
+
+            int orderId = json.get("orderId").getAsInt();
+            String chatName = json.has("chatName") ?
+                    json.get("chatName").getAsString() :
+                    "Order #" + orderId + " Chat";
+
+            FoodOrder order = ordersRepo.findById(orderId)
+                    .orElseThrow(() -> new Exception("Order not found"));
+
+            // Check if chat already exists
+            Chat existingChat = chatRepo.getChatByFoodOrder_Id(orderId);
+            if (existingChat != null) {
+                return ResponseEntity.badRequest()
+                        .body("Chat already exists for this order");
+            }
+
+            Chat chat = new Chat(chatName, order);
+            chatRepo.save(chat);
+
+            order.setChat(chat);
+            ordersRepo.save(order);
+
+            return ResponseEntity.status(HttpStatus.CREATED).body(chat);
+
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Delete a chat
+     * DELETE /api/chats/{chatId}
      */
     @DeleteMapping("/{chatId}")
     public ResponseEntity<?> deleteChat(@PathVariable int chatId) {
@@ -199,12 +214,57 @@ public class ChatController {
             return ResponseEntity.ok("Chat deleted successfully");
 
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Error deleting chat: " + e.getMessage());
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
         }
     }
 
     /**
-     * Check if chat is locked (order completed)
+     * Get chats for a user (across all their orders)
+     * GET /api/chats/users/{userId}
+     */
+    @GetMapping("/users/{userId}")
+    public ResponseEntity<?> getUserChats(@PathVariable int userId) {
+        try {
+            BasicUser user = basicUserRepository.findById(userId)
+                    .orElseThrow(() -> new Exception("User not found"));
+
+            List<FoodOrder> userOrders = ordersRepo.findByBuyer_Id(userId);
+            List<Chat> userChats = userOrders.stream()
+                    .map(FoodOrder::getChat)
+                    .filter(chat -> chat != null)
+                    .collect(java.util.stream.Collectors.toList());
+
+            return ResponseEntity.ok(userChats);
+
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Get message count for a chat
+     * GET /api/chats/{chatId}/count
+     */
+    @GetMapping("/{chatId}/count")
+    public ResponseEntity<?> getMessageCount(@PathVariable int chatId) {
+        try {
+            Chat chat = chatRepo.findById(chatId)
+                    .orElseThrow(() -> new Exception("Chat not found"));
+
+            JsonObject response = new JsonObject();
+            response.addProperty("chatId", chatId);
+            response.addProperty("messageCount", chat.getMessages().size());
+
+            return ResponseEntity.ok(response.toString());
+
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Check if chat is locked (order completed/cancelled)
+     * GET /api/chats/{chatId}/locked
      */
     @GetMapping("/{chatId}/locked")
     public ResponseEntity<?> isChatLocked(@PathVariable int chatId) {
@@ -212,53 +272,71 @@ public class ChatController {
             Chat chat = chatRepo.findById(chatId)
                     .orElseThrow(() -> new Exception("Chat not found"));
 
-            boolean isLocked = false;
-            if (chat.getFoodOrder() != null) {
-                isLocked = orderService.isChatLocked(chat.getFoodOrder().getId());
-            }
+            FoodOrder order = chat.getFoodOrder();
+            boolean isLocked = order.getOrderStatus().toString().equals("COMPLETED") ||
+                    order.getOrderStatus().toString().equals("CANCELLED");
 
-            return ResponseEntity.ok(new ChatLockStatus(isLocked));
+            JsonObject response = new JsonObject();
+            response.addProperty("chatId", chatId);
+            response.addProperty("isLocked", isLocked);
+            response.addProperty("orderStatus", order.getOrderStatus().toString());
+
+            return ResponseEntity.ok(response.toString());
 
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Error checking chat status: " + e.getMessage());
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
         }
     }
 
-    // Request DTOs
-    public static class SendMessageRequest {
-        private String messageText;
-        private int userId;
+    /**
+     * Get recent messages (last N messages)
+     * GET /api/chats/{chatId}/messages/recent?limit={limit}
+     */
+    @GetMapping("/{chatId}/messages/recent")
+    public ResponseEntity<?> getRecentMessages(
+            @PathVariable int chatId,
+            @RequestParam(defaultValue = "50") int limit) {
+        try {
+            Chat chat = chatRepo.findById(chatId)
+                    .orElseThrow(() -> new Exception("Chat not found"));
 
-        public String getMessageText() {
-            return messageText;
-        }
+            List<Review> allMessages = chat.getMessages();
+            int startIndex = Math.max(0, allMessages.size() - limit);
+            List<Review> recentMessages = allMessages.subList(startIndex, allMessages.size());
 
-        public void setMessageText(String messageText) {
-            this.messageText = messageText;
-        }
+            return ResponseEntity.ok(recentMessages);
 
-        public int getUserId() {
-            return userId;
-        }
-
-        public void setUserId(int userId) {
-            this.userId = userId;
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
         }
     }
 
-    public static class ChatLockStatus {
-        private boolean locked;
+    /**
+     * Mark messages as read (future implementation)
+     * PUT /api/chats/{chatId}/read
+     */
+    @PutMapping("/{chatId}/read")
+    public ResponseEntity<?> markAsRead(
+            @PathVariable int chatId,
+            @RequestBody String userJson) {
+        try {
+            Chat chat = chatRepo.findById(chatId)
+                    .orElseThrow(() -> new Exception("Chat not found"));
 
-        public ChatLockStatus(boolean locked) {
-            this.locked = locked;
-        }
+            Gson gson = new Gson();
+            JsonObject json = gson.fromJson(userJson, JsonObject.class);
+            int userId = json.get("userId").getAsInt();
 
-        public boolean isLocked() {
-            return locked;
-        }
+            // In a real implementation, track read status per user
+            JsonObject response = new JsonObject();
+            response.addProperty("message", "Messages marked as read");
+            response.addProperty("chatId", chatId);
+            response.addProperty("userId", userId);
 
-        public void setLocked(boolean locked) {
-            this.locked = locked;
+            return ResponseEntity.ok(response.toString());
+
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Error: " + e.getMessage());
         }
     }
 }
