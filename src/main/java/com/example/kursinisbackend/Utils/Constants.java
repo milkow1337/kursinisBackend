@@ -5,7 +5,7 @@ public class Constants {
     // ============== BASE URL ============== //
     // IMPORTANT: Update this IP address to match your development machine
     // Find your IP: Windows (ipconfig) | Mac/Linux (ifconfig or ip addr)
-    public static final String HOME_URL = "http://192.168.50.103:8080/";
+    public static final String HOME_URL = "http://10.21.17.15:8080/";
 
     // ============== USER MANAGEMENT ============== //
     public static final String VALIDATE_USER_URL = HOME_URL + "validateUser";

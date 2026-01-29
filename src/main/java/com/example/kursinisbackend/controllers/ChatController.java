@@ -127,6 +127,12 @@ public class ChatController {
 
             Review message = new Review(messageText, sender, chat);
             message.setDateCreated(LocalDate.now());
+
+            // Handle rating
+            if (json.has("rating")) {
+                message.setRating(json.get("rating").getAsInt());
+            }
+
             reviewRepo.save(message);
 
             return ResponseEntity.status(HttpStatus.CREATED).body(message);

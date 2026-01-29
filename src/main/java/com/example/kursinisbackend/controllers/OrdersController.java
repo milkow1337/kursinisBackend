@@ -14,7 +14,6 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Properties;
 
 @RestController
 @RequiredArgsConstructor
@@ -55,12 +54,25 @@ public class OrdersController {
     @PostMapping(value = "sendMessage")
     public @ResponseBody String sendMessage(@RequestBody String info) {
         Gson gson = new Gson();
-        Properties properties = gson.fromJson(info, Properties.class);
-        var messageText = properties.getProperty("messageText");
-        var commentOwner = basicUserRepository.getReferenceById(Integer.valueOf(properties.getProperty("userId")));
-        var order = ordersRepo.getReferenceById(Integer.valueOf(properties.getProperty("orderId")));
+        JsonObject jsonObject = gson.fromJson(info, JsonObject.class);
+
+        var messageText = jsonObject.get("messageText").getAsString();
+        var userId = jsonObject.get("userId").getAsInt();
+        var orderId = jsonObject.get("orderId").getAsInt();
+
+        var commentOwner = basicUserRepository.getReferenceById(userId);
+        var order = ordersRepo.getReferenceById(orderId);
 
         Review review = new Review(messageText, commentOwner, order.getChat());
+
+        // Correctly handle the rating if present
+        if (jsonObject.has("rating")) {
+            int rating = jsonObject.get("rating").getAsInt();
+            review.setRating(rating);
+            // Optionally also append to text if you want it visible in older UI versions
+            review.setReviewText(messageText + " [Rating: " + rating + "/5]");
+        }
+
         reviewRepo.save(review);
 
         return "Message sent";
@@ -68,27 +80,20 @@ public class OrdersController {
 
     // ============== NEW MISSING ENDPOINTS ============== //
 
-    /**
-     * Create a new order
-     * POST /createOrder
-     */
     @PostMapping("createOrder")
     public ResponseEntity<?> createOrder(@RequestBody String orderJson) {
         try {
             Gson gson = new Gson();
             JsonObject jsonObject = gson.fromJson(orderJson, JsonObject.class);
 
-            // Extract user ID
             int userId = jsonObject.get("userId").getAsInt();
             BasicUser buyer = basicUserRepository.findById(userId)
                     .orElseThrow(() -> new Exception("User not found"));
 
-            // Extract restaurant ID
             int restaurantId = jsonObject.get("restaurantId").getAsInt();
             Restaurant restaurant = restaurantRepository.findById(restaurantId)
                     .orElseThrow(() -> new Exception("Restaurant not found"));
 
-            // Extract items and build cuisine list
             JsonArray itemsArray = jsonObject.getAsJsonArray("items");
             List<Cuisine> cuisineList = new ArrayList<>();
             double basePrice = 0.0;
@@ -101,7 +106,6 @@ public class OrdersController {
                 Cuisine cuisine = cuisineRepo.findById(cuisineId)
                         .orElseThrow(() -> new Exception("Cuisine item not found: " + cuisineId));
 
-                // Add cuisine multiple times based on quantity
                 for (int j = 0; j < quantity; j++) {
                     cuisineList.add(cuisine);
                 }
@@ -113,26 +117,21 @@ public class OrdersController {
                 return ResponseEntity.badRequest().body("Order must contain at least one item");
             }
 
-            // Calculate final price with dynamic pricing
             double finalPrice = orderService.calculateDynamicPrice(basePrice);
 
-            // Create order
             String orderName = "Order for " + buyer.getName();
             FoodOrder order = new FoodOrder(orderName, finalPrice, buyer, cuisineList, restaurant);
             order.setOrderStatus(OrderStatus.PLACED);
             order.setDateCreated(LocalDate.now());
 
-            // Save order
             ordersRepo.save(order);
 
-            // Create chat for order
             Chat chat = new Chat("Order Chat #" + order.getId(), order);
             chatRepo.save(chat);
 
             order.setChat(chat);
             ordersRepo.save(order);
 
-            // Award loyalty points to buyer
             try {
                 int loyaltyPoints = orderService.calculateLoyaltyPoints(finalPrice);
                 buyer.setLoyaltyPoints(buyer.getLoyaltyPoints() + loyaltyPoints);
@@ -141,7 +140,6 @@ public class OrdersController {
                 System.err.println("Failed to award loyalty points: " + e.getMessage());
             }
 
-            // Return created order
             return ResponseEntity.status(HttpStatus.CREATED).body(order);
 
         } catch (Exception e) {
@@ -150,10 +148,6 @@ public class OrdersController {
         }
     }
 
-    /**
-     * Get order details by ID
-     * GET /getOrder/{orderId}
-     */
     @GetMapping("getOrder/{orderId}")
     public ResponseEntity<?> getOrderById(@PathVariable int orderId) {
         try {
@@ -165,10 +159,6 @@ public class OrdersController {
         }
     }
 
-    /**
-     * Cancel order (only if not yet accepted)
-     * DELETE /cancelOrder/{orderId}
-     */
     @DeleteMapping("cancelOrder/{orderId}")
     public ResponseEntity<?> cancelOrder(@PathVariable int orderId) {
         try {
@@ -188,10 +178,6 @@ public class OrdersController {
         }
     }
 
-    /**
-     * Update order status
-     * PUT /updateOrderStatus/{orderId}
-     */
     @PutMapping("updateOrderStatus/{orderId}")
     public ResponseEntity<?> updateOrderStatus(
             @PathVariable int orderId,
@@ -210,10 +196,6 @@ public class OrdersController {
         }
     }
 
-    /**
-     * Get orders by status
-     * GET /orders/status/{status}
-     */
     @GetMapping("orders/status/{status}")
     public ResponseEntity<?> getOrdersByStatus(@PathVariable String status) {
         try {
@@ -227,10 +209,6 @@ public class OrdersController {
         }
     }
 
-    /**
-     * Get orders by restaurant
-     * GET /orders/restaurant/{restaurantId}
-     */
     @GetMapping("orders/restaurant/{restaurantId}")
     public ResponseEntity<?> getOrdersByRestaurant(@PathVariable int restaurantId) {
         try {
@@ -241,10 +219,6 @@ public class OrdersController {
         }
     }
 
-    /**
-     * Get orders by driver
-     * GET /orders/driver/{driverId}
-     */
     @GetMapping("orders/driver/{driverId}")
     public ResponseEntity<?> getOrdersByDriver(@PathVariable int driverId) {
         try {
@@ -255,10 +229,6 @@ public class OrdersController {
         }
     }
 
-    /**
-     * Get available orders (no driver assigned)
-     * GET /orders/available
-     */
     @GetMapping("orders/available")
     public ResponseEntity<?> getAvailableOrders() {
         try {
@@ -269,10 +239,6 @@ public class OrdersController {
         }
     }
 
-    /**
-     * Assign driver to order
-     * POST /orders/{orderId}/assignDriver
-     */
     @PostMapping("orders/{orderId}/assignDriver")
     public ResponseEntity<?> assignDriver(
             @PathVariable int orderId,
@@ -295,10 +261,6 @@ public class OrdersController {
         }
     }
 
-    /**
-     * Get order statistics
-     * GET /orders/stats
-     */
     @GetMapping("orders/stats")
     public ResponseEntity<?> getOrderStatistics() {
         try {
@@ -335,10 +297,6 @@ public class OrdersController {
         }
     }
 
-    /**
-     * Get user's active orders
-     * GET /orders/user/{userId}/active
-     */
     @GetMapping("orders/user/{userId}/active")
     public ResponseEntity<?> getUserActiveOrders(@PathVariable int userId) {
         try {
@@ -353,10 +311,6 @@ public class OrdersController {
         }
     }
 
-    /**
-     * Get restaurant's pending orders
-     * GET /orders/restaurant/{restaurantId}/pending
-     */
     @GetMapping("orders/restaurant/{restaurantId}/pending")
     public ResponseEntity<?> getRestaurantPendingOrders(@PathVariable int restaurantId) {
         try {
@@ -372,10 +326,6 @@ public class OrdersController {
         }
     }
 
-    /**
-     * Get driver's active deliveries
-     * GET /orders/driver/{driverId}/active
-     */
     @GetMapping("orders/driver/{driverId}/active")
     public ResponseEntity<?> getDriverActiveOrders(@PathVariable int driverId) {
         try {

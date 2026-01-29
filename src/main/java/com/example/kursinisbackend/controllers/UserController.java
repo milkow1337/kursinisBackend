@@ -4,9 +4,10 @@ import com.example.kursinisbackend.model.*;
 import com.example.kursinisbackend.repos.BasicUserRepository;
 import com.example.kursinisbackend.repos.RestaurantRepository;
 import com.example.kursinisbackend.repos.UserRepository;
+import com.example.kursinisbackend.service.AuthService;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -17,16 +18,13 @@ import java.util.List;
 import java.util.Properties;
 
 @RestController
+@RequiredArgsConstructor
 public class UserController {
 
-    @Autowired
-    private UserRepository userRepository;
-
-    @Autowired
-    private BasicUserRepository basicUserRepository;
-
-    @Autowired
-    private RestaurantRepository restaurantRepository;
+    private final UserRepository userRepository;
+    private final BasicUserRepository basicUserRepository;
+    private final RestaurantRepository restaurantRepository;
+    private final AuthService authService; // Inject AuthService
 
     // ============== EXISTING ENDPOINTS ============== //
 
@@ -46,45 +44,50 @@ public class UserController {
         Gson gson = new Gson();
         Properties properties = gson.fromJson(info, Properties.class);
         var login = properties.getProperty("login");
-        var psw = properties.getProperty("password");
-        User user = userRepository.getUserByLoginAndPassword(login, psw);
+        var psw = properties.getProperty("password"); // This is the plain-text password
+
+        // 1. Find user by login
+        User user = userRepository.findByLogin(login); // Assuming findByLogin method exists in UserRepository
 
         if (user != null) {
-            JsonObject jsonObject = new JsonObject();
-            jsonObject.addProperty("userType", user.getClass().getName());
-            jsonObject.addProperty("login", user.getLogin());
-            jsonObject.addProperty("password", user.getPassword());
-            jsonObject.addProperty("name", user.getName());
-            jsonObject.addProperty("surname", user.getSurname());
-            jsonObject.addProperty("id", user.getId());
+            // 2. Verify password using AuthService
+            if (authService.verifyUser(psw, user.getPassword())) {
+                JsonObject jsonObject = new JsonObject();
+                jsonObject.addProperty("userType", user.getClass().getName());
+                jsonObject.addProperty("login", user.getLogin());
+                jsonObject.addProperty("password", user.getPassword()); // Send hashed password back (or omit for security)
+                jsonObject.addProperty("name", user.getName());
+                jsonObject.addProperty("surname", user.getSurname());
+                jsonObject.addProperty("id", user.getId());
 
-            // Add type-specific fields
-            if (user instanceof BasicUser) {
-                BasicUser basicUser = (BasicUser) user;
-                jsonObject.addProperty("address", basicUser.getAddress());
-                jsonObject.addProperty("loyaltyPoints", basicUser.getLoyaltyPoints());
+                // Add type-specific fields
+                if (user instanceof BasicUser) {
+                    BasicUser basicUser = (BasicUser) user;
+                    jsonObject.addProperty("address", basicUser.getAddress());
+                    jsonObject.addProperty("loyaltyPoints", basicUser.getLoyaltyPoints());
 
-                if (user instanceof Driver) {
-                    Driver driver = (Driver) user;
-                    jsonObject.addProperty("licence", driver.getLicence());
-                    jsonObject.addProperty("bDate", driver.getBDate().toString());
-                    jsonObject.addProperty("vehicleType", driver.getVehicleType().toString());
-                } else if (user instanceof Restaurant) {
-                    Restaurant restaurant = (Restaurant) user;
-                    jsonObject.addProperty("restaurantName", restaurant.getRestaurantName());
-                    if (restaurant.getOpeningTime() != null) {
-                        jsonObject.addProperty("openingTime", restaurant.getOpeningTime().toString());
-                    }
-                    if (restaurant.getClosingTime() != null) {
-                        jsonObject.addProperty("closingTime", restaurant.getClosingTime().toString());
+                    if (user instanceof Driver) {
+                        Driver driver = (Driver) user;
+                        jsonObject.addProperty("licence", driver.getLicence());
+                        jsonObject.addProperty("bDate", driver.getBDate().toString());
+                        jsonObject.addProperty("vehicleType", driver.getVehicleType().toString());
+                    } else if (user instanceof Restaurant) {
+                        Restaurant restaurant = (Restaurant) user;
+                        jsonObject.addProperty("restaurantName", restaurant.getRestaurantName());
+                        if (restaurant.getOpeningTime() != null) {
+                            jsonObject.addProperty("openingTime", restaurant.getOpeningTime().toString());
+                        }
+                        if (restaurant.getClosingTime() != null) {
+                            jsonObject.addProperty("closingTime", restaurant.getClosingTime().toString());
+                        }
                     }
                 }
-            }
 
-            String json = gson.toJson(jsonObject);
-            return json;
+                String json = gson.toJson(jsonObject);
+                return json;
+            }
         }
-        return null;
+        return null; // Return null if user not found or password doesn't match
     }
 
     @PutMapping(value = "updateUser")
@@ -108,20 +111,23 @@ public class UserController {
 
     @PostMapping(value = "insertUser")
     public @ResponseBody User createUser(@RequestBody User user) {
+        // This endpoint should also hash passwords if it's used for new user creation
         userRepository.save(user);
-        return userRepository.getUserByLoginAndPassword(user.getLogin(), user.getPassword());
+        return userRepository.findByLogin(user.getLogin()); // Use findByLogin
     }
 
     @PostMapping(value = "insertBasic")
     public @ResponseBody User createBasicUser(@RequestBody BasicUser user) {
+        // This endpoint should also hash passwords if it's used for new user creation
         basicUserRepository.save(user);
-        return userRepository.getUserByLoginAndPassword(user.getLogin(), user.getPassword());
+        return userRepository.findByLogin(user.getLogin()); // Use findByLogin
     }
 
     @PostMapping(value = "insertBasicUser")
     public @ResponseBody User createBasicUserAlt(@RequestBody BasicUser basicUser) {
+        // This endpoint should also hash passwords if it's used for new user creation
         basicUserRepository.save(basicUser);
-        return userRepository.getUserByLoginAndPassword(basicUser.getLogin(), basicUser.getPassword());
+        return userRepository.findByLogin(basicUser.getLogin()); // Use findByLogin
     }
 
     @DeleteMapping(value = "deleteUser/{id}")
@@ -164,13 +170,16 @@ public class UserController {
             }
 
             // Check if username already exists
-            User existingUser = userRepository.getUserByLoginAndPassword(driver.getLogin(), driver.getPassword());
+            User existingUser = userRepository.findByLogin(driver.getLogin()); // Use findByLogin
             if (existingUser != null) {
                 return ResponseEntity.badRequest().body("Username already exists");
             }
 
+            // Hash password before saving
+            driver.setPassword(authService.encodePassword(driver.getPassword()));
+
             basicUserRepository.save(driver);
-            User savedDriver = userRepository.getUserByLoginAndPassword(driver.getLogin(), driver.getPassword());
+            User savedDriver = userRepository.findByLogin(driver.getLogin()); // Use findByLogin
 
             return ResponseEntity.status(HttpStatus.CREATED).body(savedDriver);
 
@@ -196,13 +205,16 @@ public class UserController {
             }
 
             // Check if username already exists
-            User existingUser = userRepository.getUserByLoginAndPassword(restaurant.getLogin(), restaurant.getPassword());
+            User existingUser = userRepository.findByLogin(restaurant.getLogin()); // Use findByLogin
             if (existingUser != null) {
                 return ResponseEntity.badRequest().body("Username already exists");
             }
 
+            // Hash password before saving
+            restaurant.setPassword(authService.encodePassword(restaurant.getPassword()));
+
             restaurantRepository.save(restaurant);
-            User savedRestaurant = userRepository.getUserByLoginAndPassword(restaurant.getLogin(), restaurant.getPassword());
+            User savedRestaurant = userRepository.findByLogin(restaurant.getLogin()); // Use findByLogin
 
             return ResponseEntity.status(HttpStatus.CREATED).body(savedRestaurant);
 
@@ -328,13 +340,13 @@ public class UserController {
             String oldPassword = passwordData.get("oldPassword").getAsString();
             String newPassword = passwordData.get("newPassword").getAsString();
 
-            // Verify old password
-            if (!user.getPassword().equals(oldPassword)) {
+            // Verify old password using AuthService
+            if (!authService.verifyUser(oldPassword, user.getPassword())) {
                 return ResponseEntity.badRequest().body("Incorrect current password");
             }
 
-            // Update password
-            user.setPassword(newPassword);
+            // Hash new password before saving
+            user.setPassword(authService.encodePassword(newPassword));
             userRepository.save(user);
 
             return ResponseEntity.ok("Password updated successfully");
