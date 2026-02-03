@@ -69,7 +69,7 @@ public class UserController {
                     if (user instanceof Driver) {
                         Driver driver = (Driver) user;
                         jsonObject.addProperty("licence", driver.getLicence());
-                        jsonObject.addProperty("bDate", driver.getBDate().toString());
+                        jsonObject.addProperty("bDate", driver.getBirthDate().toString()); // Updated to getBirthDate()
                         jsonObject.addProperty("vehicleType", driver.getVehicleType().toString());
                     } else if (user instanceof Restaurant) {
                         Restaurant restaurant = (Restaurant) user;
@@ -155,13 +155,13 @@ public class UserController {
                 return ResponseEntity.badRequest().body("License number is required for drivers");
             }
 
-            if (driver.getBDate() == null) {
+            if (driver.getBirthDate() == null) { // Updated to getBirthDate()
                 return ResponseEntity.badRequest().body("Birth date is required for drivers");
             }
 
             // Validate age (must be 18+)
             LocalDate minDate = LocalDate.now().minusYears(18);
-            if (driver.getBDate().isAfter(minDate)) {
+            if (driver.getBirthDate().isAfter(minDate)) { // Updated to getBirthDate()
                 return ResponseEntity.badRequest().body("Driver must be at least 18 years old");
             }
 

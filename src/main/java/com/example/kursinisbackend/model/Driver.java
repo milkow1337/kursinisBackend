@@ -17,14 +17,14 @@ import java.time.LocalDate;
 @Entity
 public class Driver extends BasicUser{
     private String licence;
-    private LocalDate bDate;
+    private LocalDate birthDate; // Renamed from bDate
     @Enumerated(EnumType.STRING)
     private VehicleType vehicleType;
 
-    public Driver(String login, String password, String name, String surname, String phoneNumber, String address, String licence, LocalDate bDate, VehicleType vehicleType) {
+    public Driver(String login, String password, String name, String surname, String phoneNumber, String address, String licence, LocalDate birthDate, VehicleType vehicleType) {
         super(login, password, name, surname, phoneNumber, address);
         this.licence = licence;
-        this.bDate = bDate;
+        this.birthDate = birthDate;
         this.vehicleType = vehicleType;
     }
 }
