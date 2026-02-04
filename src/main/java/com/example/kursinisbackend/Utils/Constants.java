@@ -2,12 +2,10 @@ package com.example.kursinisbackend.Utils;
 
 public class Constants {
 
-    // ============== BASE URL ============== //
-    // IMPORTANT: Update this IP address to match your development machine
-    // Find your IP: Windows (ipconfig) | Mac/Linux (ifconfig or ip addr)
-    public static final String HOME_URL = "http://192.168.50.103:8080/";
 
-    // ============== USER MANAGEMENT ============== //
+    public static final String HOME_URL = "http://192.168.50.163:8080/";
+
+    // USER
     public static final String VALIDATE_USER_URL = HOME_URL + "validateUser";
     public static final String CREATE_BASIC_USER_URL = HOME_URL + "insertBasic";
     public static final String CREATE_DRIVER_URL = HOME_URL + "insertDriver";
@@ -22,7 +20,7 @@ public class Constants {
     public static final String GET_USER_STATS_URL = HOME_URL + "users/"; // + userId + "/stats"
     public static final String DELETE_USER_URL = HOME_URL + "deleteUser/"; // + userId
 
-    // ============== ORDER MANAGEMENT ============== //
+    // ORDER
     public static final String CREATE_ORDER = HOME_URL + "createOrder";
     public static final String GET_ORDERS_BY_USER = HOME_URL + "getOrderByUser/"; // + userId
     public static final String GET_ORDER_BY_ID = HOME_URL + "getOrder/"; // + orderId
@@ -38,7 +36,7 @@ public class Constants {
     public static final String GET_RESTAURANT_PENDING_ORDERS = HOME_URL + "orders/restaurant/"; // + restaurantId + "/pending"
     public static final String GET_DRIVER_ACTIVE_ORDERS = HOME_URL + "orders/driver/"; // + driverId + "/active"
 
-    // ============== MENU/CUISINE MANAGEMENT ============== //
+    //MENU
     public static final String GET_RESTAURANT_MENU = HOME_URL + "getMenuRestaurant/"; // + restaurantId
     public static final String GET_ALL_CUISINE = HOME_URL + "api/cuisine";
     public static final String GET_CUISINE_BY_ID = HOME_URL + "api/cuisine/"; // + cuisineId
@@ -54,7 +52,7 @@ public class Constants {
     public static final String GET_RESTAURANT_VEGAN_MENU = HOME_URL + "api/cuisine/restaurant/"; // + restaurantId + "/vegan"
     public static final String BULK_CREATE_CUISINE = HOME_URL + "api/cuisine/bulk";
 
-    // ============== CHAT SYSTEM ============== //
+    //CHAT
     public static final String GET_MESSAGES_BY_ORDER = HOME_URL + "getMessagesForOrder/"; // + orderId
     public static final String SEND_MESSAGE = HOME_URL + "sendMessage";
     public static final String GET_ALL_CHATS = HOME_URL + "api/chats";
@@ -66,7 +64,7 @@ public class Constants {
     public static final String DELETE_CHAT = HOME_URL + "api/chats/"; // + chatId
     public static final String IS_CHAT_LOCKED = HOME_URL + "api/chats/"; // + chatId + "/locked"
 
-    // ============== DRIVER SPECIFIC ============== //
+    //DRIVER
     public static final String GET_DRIVER_ORDERS = HOME_URL + "api/drivers/"; // + driverId + "/orders"
     public static final String GET_DRIVER_ACTIVE_DELIVERIES = HOME_URL + "api/drivers/"; // + driverId + "/orders/active"
     public static final String GET_DRIVER_AVAILABLE_ORDERS = HOME_URL + "api/drivers/orders/available";
@@ -76,7 +74,7 @@ public class Constants {
     public static final String COMPLETE_ORDER = HOME_URL + "api/drivers/"; // + driverId + "/orders/" + orderId + "/complete"
     public static final String GET_DRIVER_STATS = HOME_URL + "api/drivers/"; // + driverId + "/stats"
 
-    // ============== RESTAURANT SPECIFIC ============== //
+    //RESTAURANT
     public static final String GET_RESTAURANT_BY_ID = HOME_URL + "api/restaurants/"; // + restaurantId
     public static final String GET_RESTAURANT_ORDERS = HOME_URL + "api/restaurants/"; // + restaurantId + "/orders"
     public static final String GET_RESTAURANT_ORDERS_BY_STATUS = HOME_URL + "api/restaurants/"; // + restaurantId + "/orders/status/" + status
@@ -87,7 +85,7 @@ public class Constants {
     public static final String UPDATE_MENU_ITEM = HOME_URL + "api/restaurants/"; // + restaurantId + "/menu/" + cuisineId
     public static final String DELETE_MENU_ITEM = HOME_URL + "api/restaurants/"; // + restaurantId + "/menu/" + cuisineId
 
-    // ============== REVIEWS ============== //
+    // REVIEWS
     public static final String GET_ALL_REVIEWS = HOME_URL + "api/reviews";
     public static final String GET_REVIEW_BY_ID = HOME_URL + "api/reviews/"; // + reviewId
     public static final String CREATE_REVIEW = HOME_URL + "api/reviews";
@@ -99,106 +97,51 @@ public class Constants {
     public static final String GET_DRIVER_REVIEWS = HOME_URL + "api/reviews/drivers/"; // + driverId
     public static final String GET_USER_RATING = HOME_URL + "api/reviews/users/"; // + userId + "/rating"
 
-    // ============== HELPER METHODS ============== //
 
-    /**
-     * Build URL for getting user by ID
-     * @param userId User ID
-     * @return Complete URL
-     */
     public static String getUserByIdUrl(int userId) {
         return GET_USER_BY_ID_URL + userId;
     }
 
-    /**
-     * Build URL for updating user profile
-     * @param userId User ID
-     * @return Complete URL
-     */
     public static String updateUserProfileUrl(int userId) {
         return UPDATE_USER_PROFILE_URL + userId + "/profile";
     }
 
-    /**
-     * Build URL for changing password
-     * @param userId User ID
-     * @return Complete URL
-     */
     public static String changePasswordUrl(int userId) {
         return CHANGE_PASSWORD_URL + userId + "/password";
     }
 
-    /**
-     * Build URL for getting user stats
-     * @param userId User ID
-     * @return Complete URL
-     */
     public static String getUserStatsUrl(int userId) {
         return GET_USER_STATS_URL + userId + "/stats";
     }
 
-    /**
-     * Build URL for getting restaurant menu
-     * @param restaurantId Restaurant ID
-     * @return Complete URL
-     */
+
     public static String getRestaurantMenuUrl(int restaurantId) {
         return GET_RESTAURANT_MENU + restaurantId;
     }
 
-    /**
-     * Build URL for getting order by ID
-     * @param orderId Order ID
-     * @return Complete URL
-     */
     public static String getOrderByIdUrl(int orderId) {
         return GET_ORDER_BY_ID + orderId;
     }
 
-    /**
-     * Build URL for claiming an order (driver)
-     * @param driverId Driver ID
-     * @param orderId Order ID
-     * @return Complete URL
-     */
+
     public static String claimOrderUrl(int driverId, int orderId) {
         return "api/drivers/" + driverId + "/orders/" + orderId + "/claim";
     }
 
-    /**
-     * Build URL for accepting an order (restaurant)
-     * @param restaurantId Restaurant ID
-     * @param orderId Order ID
-     * @return Complete URL
-     */
     public static String acceptOrderUrl(int restaurantId, int orderId) {
         return HOME_URL + "api/restaurants/" + restaurantId + "/orders/" + orderId + "/accept";
     }
 
-    /**
-     * Build URL for chat messages
-     * @param orderId Order ID
-     * @return Complete URL
-     */
     public static String getChatMessagesUrl(int orderId) {
         return GET_MESSAGES_BY_ORDER + orderId;
     }
 
-    /**
-     * Build search URL with query parameter
-     * @param searchTerm Search term
-     * @return Complete URL
-     */
+
     public static String searchCuisineUrl(String searchTerm) {
         return SEARCH_CUISINE + searchTerm;
     }
 
-    /**
-     * Build price range URL
-     * @param min Minimum price
-     * @param max Maximum price
-     * @return Complete URL
-     */
+
     public static String getCuisineByPriceUrl(double min, double max) {
         return GET_CUISINE_BY_PRICE + min + "&max=" + max;
     }

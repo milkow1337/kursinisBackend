@@ -27,7 +27,6 @@ public class OrdersController {
     private final RestaurantRepository restaurantRepository;
     private final OrderService orderService;
 
-    // ============== EXISTING ENDPOINTS ============== //
 
     @GetMapping(value = "getMenuRestaurant/{id}")
     public Iterable<Cuisine> getRestaurantMenu(@PathVariable int id) {
@@ -65,11 +64,9 @@ public class OrdersController {
 
         Review review = new Review(messageText, commentOwner, order.getChat());
 
-        // Correctly handle the rating if present
         if (jsonObject.has("rating")) {
             int rating = jsonObject.get("rating").getAsInt();
             review.setRating(rating);
-            // Optionally also append to text if you want it visible in older UI versions
             review.setReviewText(messageText + " [Rating: " + rating + "/5]");
         }
 
@@ -78,7 +75,6 @@ public class OrdersController {
         return "Message sent";
     }
 
-    // ============== NEW MISSING ENDPOINTS ============== //
 
     @PostMapping("createOrder")
     public ResponseEntity<?> createOrder(@RequestBody String orderJson) {

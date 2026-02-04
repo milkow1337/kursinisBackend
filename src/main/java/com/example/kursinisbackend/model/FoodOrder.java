@@ -1,5 +1,6 @@
 package com.example.kursinisbackend.model;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -41,7 +42,11 @@ public class FoodOrder {
     @Enumerated(EnumType.STRING)
     private OrderStatus orderStatus;
 
+    // FIXED: Add proper JSON format annotations for consistent serialization
+    @JsonFormat(pattern = "yyyy-MM-dd")
     private LocalDate dateCreated;
+
+    @JsonFormat(pattern = "yyyy-MM-dd")
     private LocalDate dateUpdated;
 
     public FoodOrder(String name, Double price, BasicUser buyer, Restaurant restaurant) {

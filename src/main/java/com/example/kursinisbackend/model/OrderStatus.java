@@ -1,9 +1,6 @@
 package com.example.kursinisbackend.model;
 
-/**
- * Order status workflow:
- * PLACED -> ACCEPTED -> READY -> DRIVER_ASSIGNED -> OUT_FOR_DELIVERY -> DELIVERED -> COMPLETED
- */
+
 public enum OrderStatus {
     PLACED,           // Order placed by customer
     ACCEPTED,         // Restaurant accepted the order
